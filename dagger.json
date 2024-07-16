@@ -1,0 +1,6 @@
+{
+  "name": "save-spotify-weekly",
+  "sdk": "go",
+  "source": "ci",
+  "engineVersion": "v0.11.6"
+}

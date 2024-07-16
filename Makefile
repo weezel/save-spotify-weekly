@@ -1,7 +1,7 @@
 APP_NAME	?= savespotifyweekly
 
 GO		?= go
-DOCKER_BUILDKIT ?= 1
+DAGGER		?= dagger
 VERSION		?= $(shell git log --pretty=format:%h -n 1)
 BUILD_TIME	?= $(shell date)
 # -s removes symbol table and -ldflags -w debugging symbols
@@ -23,6 +23,13 @@ build:
 		$(GO) build $(LDFLAGS) \
 		-o dist/$(APP_NAME)_$(GOOS)_$(GOARCH) \
 		cmd/main.go
+
+dagger-build-all-archs:
+	$(DAGGER) call build --src=. export --path=./dist
+
+dagger-update:
+	$(DAGGER) develop --source=ci
+
 .PHONY: clean
 clean:
 	rm -rf dist/
