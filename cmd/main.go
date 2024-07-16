@@ -7,20 +7,26 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"weezel/savespotifyweekly/pkg/wspotify"
 
 	"github.com/zmb3/spotify/v2"
 )
 
-const localHostURI = "http://localhost:8080/callback"
+var (
+	localHostURI         = cmp.Or(os.Getenv("SPOTIFY_CALLBACK_URL"), "http://localhost:8080/callback")
+	spotifyID            = cmp.Or(os.Getenv("SPOTIFY_ID"), "EMPTY_ID")
+	spotifySecret        = cmp.Or(os.Getenv("SPOTIFY_SECRET"), "EMPTY_SECRET")
+	archivedPlaylistName = os.Getenv("PLAYLIST_NAME")
+)
 
 func main() {
 	ctx := context.Background()
 
 	spotifyCli := wspotify.NewClient(
-		cmp.Or(os.Getenv("SPOTIFY_ID"), "EMPTY_ID"),
-		cmp.Or(os.Getenv("SPOTIFY_SECRET"), "EMPTY_SECRET"),
+		spotifyID,
+		spotifySecret,
 		localHostURI,
 		&spotify.Client{},
 	)
@@ -52,10 +58,29 @@ func main() {
 		log.Fatal("Failed to find Discover weekly playlist")
 	}
 
-	fullPlaylist, err := spotifyCli.GetClient().GetPlaylist(ctx, discoverWeekly.ID)
+	dwPlaylist, err := spotifyCli.GetClient().GetPlaylist(ctx, discoverWeekly.ID)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+	dwTracks := []spotify.ID{}
+	for _, t := range dwPlaylist.Tracks.Tracks {
+		dwTracks = append(dwTracks, t.Track.ID)
 	}
 
-	wspotify.PrintSongsInPlaylist(fullPlaylist)
+	if archivedPlaylistName == "" {
+		year, week := time.Now().ISOWeek()
+		archivedPlaylistName = fmt.Sprintf("Archived discover weekly %d-%d", year, week)
+	}
+	err = spotifyCli.SaveCurrentWeeksPlaylist(
+		ctx,
+		user.ID,
+		archivedPlaylistName,
+		time.Now(),
+		dwTracks...,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	wspotify.PrintSongsInPlaylist(dwPlaylist)
 }

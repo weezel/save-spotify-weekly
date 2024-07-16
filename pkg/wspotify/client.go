@@ -144,6 +144,38 @@ func PrintSongsInPlaylist(fullPlaylist *spotify.FullPlaylist) {
 	}
 }
 
+const playlistDescription = "Archived weekly playlist for week %d-%d"
+
+func (s *Spotify) SaveCurrentWeeksPlaylist(
+	ctx context.Context,
+	userID string,
+	playlistName string,
+	timeNow time.Time,
+	tracks ...spotify.ID,
+) error {
+	year, week := timeNow.ISOWeek()
+	pl, err := s.client.CreatePlaylistForUser(
+		ctx,
+		userID,
+		playlistName,
+		fmt.Sprintf(playlistDescription, year, week),
+		false,
+		false,
+	)
+	if err != nil {
+		return fmt.Errorf("creating playlist: %w", err)
+	}
+
+	plSnapshotID, err := s.client.AddTracksToPlaylist(ctx, pl.ID, tracks...)
+	if err != nil {
+		return fmt.Errorf("add tracks: %w", err)
+	}
+
+	fmt.Printf("Added tracks into playlist %q (ID=%s) with snapshot ID %s\n", pl.Name, pl.ID.String(), plSnapshotID)
+
+	return nil
+}
+
 func writeTokenToDisk(token *oauth2.Token, tokenFile *os.File) error {
 	inJSON, err := json.MarshalIndent(token, "", "  ")
 	if err != nil {
