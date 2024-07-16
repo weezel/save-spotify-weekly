@@ -15,47 +15,30 @@ import (
 
 const localHostURI = "http://localhost:8080/callback"
 
-// spotifyCli = spfy.NewClient(
-// 	os.Getenv("SPOTIFY_ID"),
-// 	os.Getenv("SPOTIFY_SECRET"),
-// 	localHostURI,
-// 	&spotify.Client{},
-// )
-// oauthConfig = &oauth2.Config{
-// 	ClientID:     os.Getenv("SPOTIFY_ID"),
-// 	ClientSecret: os.Getenv("SPOTIFY_SECRET"),
-// 	Endpoint: oauth2.Endpoint{
-// 		AuthURL:   spotifyauth.AuthURL,
-// 		TokenURL:  spotifyauth.TokenURL,
-// 		AuthStyle: oauth2.AuthStyleAutoDetect,
-// 	},
-// 	RedirectURL: localHostURI,
-// 	Scopes: []string{
-// 		spotifyauth.ScopePlaylistReadPrivate,
-// 		spotifyauth.ScopePlaylistModifyPrivate,
-// 	},
-// }
-
 func main() {
 	ctx := context.Background()
 
 	spotifyCli := wspotify.NewClient(
-		cmp.Or(os.Getenv("SPOTIFY_ID"), "EMPTY"),
-		cmp.Or(os.Getenv("SPOTIFY_SECRET"), "EMPTY_TOO"),
+		cmp.Or(os.Getenv("SPOTIFY_ID"), "EMPTY_ID"),
+		cmp.Or(os.Getenv("SPOTIFY_SECRET"), "EMPTY_SECRET"),
 		localHostURI,
 		&spotify.Client{},
 	)
 	// If we don't have token file saved yet ask user to grant the needed permissions
 	if _, err := os.Stat("token.json"); err != nil && errors.Is(err, os.ErrNotExist) {
-		spotifyCli.StartWebserver(ctx)
-		select {
-		case <-spotifyCli.ClientInitDone:
+		// Run in a func so it's possible to close the web server when returning
+		func() {
+			spotifyCli.InteractiveAuth(ctx)
+			defer spotifyCli.ShutdownWebserver(ctx)
+
+			<-spotifyCli.ClientInitDone
 			log.Println("Spotify client initialized")
+		}()
+	} else {
+		if err = spotifyCli.NonInteractiveAuth(ctx); err != nil {
+			log.Panicf("Non interactive login paniced: %v\n", err)
 		}
 	}
-	//  else {
-	// 	// go nonInteractiveAuth(ctx)
-	// }
 
 	user, err := spotifyCli.GetClient().CurrentUser(ctx)
 	if err != nil {

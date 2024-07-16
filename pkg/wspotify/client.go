@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -75,26 +76,7 @@ func (s *Spotify) GetClient() *spotify.Client {
 	return s.client
 }
 
-// func (s *Spotify) Exchange(ctx context.Context, code string) (*oauth2.Token, error) {
-// 	token, err := s.Auth.Exchange(ctx, code)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("exchange code: %w", err)
-// 	}
-// 	return token, nil
-// }
-
-// func (s *Spotify) Refresh(ctx context.Context, token *oauth2.Token) (*oauth2.Token, error) {
-// 	cli := spotify.New(s.Auth.Client(ctx, token))
-// 	newToken, err := cli.Token()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("token refresh: %w", err)
-// 	}
-
-// 	s.client = cli
-// 	return newToken, nil
-// }
-
-func (s *Spotify) RefreshAccessToken(ctx context.Context) error {
+func (s *Spotify) refreshAccessToken(ctx context.Context) error {
 	newToken, err := s.auth.RefreshToken(ctx, s.token)
 	if err != nil {
 		return fmt.Errorf("refresh token: %w", err)
@@ -152,8 +134,9 @@ func joinArtists(artists []spotify.SimpleArtist) string {
 }
 
 func PrintSongsInPlaylist(fullPlaylist *spotify.FullPlaylist) {
+	fmt.Printf("%-30s %-30s %s\n", "ARTIST", "TRACK", "ALBUM")
 	for _, song := range fullPlaylist.Tracks.Tracks {
-		fmt.Printf("%-30s - %-30s [%s]\n",
+		fmt.Printf("%-30s %-30s %s\n",
 			joinArtists(song.Track.Artists),
 			song.Track.Name,
 			song.Track.Album.Name,
@@ -168,49 +151,56 @@ func writeTokenToDisk(token *oauth2.Token, tokenFile *os.File) error {
 	}
 
 	_, err = tokenFile.Write(inJSON)
-	return err
+	if err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+
+	return nil
 }
 
 func loadTokenFromDisk(file *os.File) (*oauth2.Token, error) {
+	dec := json.NewDecoder(file)
+	dec.DisallowUnknownFields()
 	var token *oauth2.Token
-	if err := json.NewDecoder(file).Decode(&token); err != nil {
+	if err := dec.Decode(&token); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal token: %w", err)
 	}
 
 	return token, nil
 }
 
-func (s *Spotify) nonInteractiveAuth(ctx context.Context) {
+func (s *Spotify) NonInteractiveAuth(ctx context.Context) error {
 	tokenFile, err := os.OpenFile("token.json", os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		log.Fatalf("failed to load file: %v", err)
+		return fmt.Errorf("load file: %w", err)
 	}
 	defer tokenFile.Close()
 
 	token, err := loadTokenFromDisk(tokenFile)
 	if err != nil {
-		log.Printf("Failed to read token: %v", err)
-	} else {
-		log.Print("Loaded tokens from the disk")
+		return fmt.Errorf("read token: %w", err)
 	}
+	log.Printf("Loaded token from the disk")
 
 	if token == nil {
-		// TODO Token file was empty or absent
+		return errors.New("nil token")
 	}
 
-	// Store refresh token for later use to avoid constant manual approval
-	if err = writeTokenToDisk(token, tokenFile); err != nil {
-		tokenFile.Close()
-		log.Panicf("Failed to store refresh token: %v", err)
+	s.token = token
+	if err = s.refreshAccessToken(ctx); err != nil {
+		return fmt.Errorf("refresh access token: %w", err)
 	}
 
-	// use the token to get an authenticated client
-	// TODO fetch access token at this point
-	// client := spotify.New(spotifyCli.Auth.Client(ctx, token))
-	s.client = spotify.New(s.auth.Client(ctx, token))
+	s.client = spotify.New(s.auth.Client(ctx, s.token))
+
+	return nil
 }
 
-func (s *Spotify) StartWebserver(ctx context.Context) {
+func (s *Spotify) InteractiveAuth(ctx context.Context) {
+	s.startWebserver(ctx)
+}
+
+func (s *Spotify) startWebserver(ctx context.Context) {
 	listenAddr := cmp.Or(os.Getenv("HTTP_HOST"), "localhost")
 	port := cmp.Or(os.Getenv("HTTP_PORT"), "8080")
 
@@ -236,17 +226,20 @@ func (s *Spotify) StartWebserver(ctx context.Context) {
 		),
 	)
 	go func() {
-		if err := s.webserver.ListenAndServe(); err != nil {
+		if err := s.webserver.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Failed to start webserver: %v", err)
 		}
 	}()
 }
 
-func (s *Spotify) ShutdownWebserver(ctx context.Context) error {
+func (s *Spotify) ShutdownWebserver(ctx context.Context) {
 	_, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return fmt.Errorf("webserver close: %w", s.webserver.Close())
+	if err := s.webserver.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("Couldn't shutdown the webserver: %v\n", err)
+		return
+	}
 }
 
 func (s *Spotify) completeAuth(w http.ResponseWriter, r *http.Request) {
