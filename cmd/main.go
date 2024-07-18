@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -21,15 +22,7 @@ var (
 	archivedPlaylistName = os.Getenv("PLAYLIST_NAME")
 )
 
-func main() {
-	ctx := context.Background()
-
-	spotifyCli := wspotify.NewClient(
-		spotifyID,
-		spotifySecret,
-		localHostURI,
-		&spotify.Client{},
-	)
+func normalUsage(ctx context.Context, spotifyCli *wspotify.Spotify) {
 	// If we don't have token file saved yet ask user to grant the needed permissions
 	if _, err := os.Stat("token.json"); err != nil && errors.Is(err, os.ErrNotExist) {
 		// Run in a func so it's possible to close the web server when returning
@@ -83,4 +76,28 @@ func main() {
 	}
 
 	wspotify.PrintSongsInPlaylist(dwPlaylist)
+}
+
+func main() {
+	ctx := context.Background()
+
+	var flagRefreshOnly bool
+	flag.BoolVar(&flagRefreshOnly, "r", false, "Only refresh the existing token")
+	flag.Parse()
+
+	spotifyCli := wspotify.NewClient(
+		spotifyID,
+		spotifySecret,
+		localHostURI,
+		&spotify.Client{},
+	)
+
+	if flagRefreshOnly {
+		if err := spotifyCli.NonInteractiveAuth(ctx); err != nil {
+			log.Panicf("Non interactive login paniced: %v\n", err)
+		}
+		return
+	}
+
+	normalUsage(ctx, spotifyCli)
 }
