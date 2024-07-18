@@ -241,10 +241,10 @@ func (s *Spotify) NonInteractiveAuth(ctx context.Context) error {
 }
 
 func (s *Spotify) InteractiveAuth(ctx context.Context) {
-	s.startWebserver(ctx)
+	s.startWebserver()
 }
 
-func (s *Spotify) startWebserver(ctx context.Context) {
+func (s *Spotify) startWebserver() {
 	listenAddr := cmp.Or(os.Getenv("HTTP_HOST"), "localhost")
 	port := cmp.Or(os.Getenv("HTTP_PORT"), "8080")
 
