@@ -21,6 +21,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const tokenFilename = "token.json"
+
 // More info about the authorization can be found from here
 // https://developer.spotify.com/documentation/web-api/concepts/authorization
 // and https://developer.spotify.com/documentation/web-api/tutorials/code-flow
@@ -83,7 +85,17 @@ func (s *Spotify) refreshAccessToken(ctx context.Context) error {
 	}
 
 	if s.token.AccessToken != newToken.AccessToken {
-		s.token.AccessToken = newToken.AccessToken
+		s.token = newToken
+	}
+
+	tokenFile, err := os.OpenFile(tokenFilename, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return fmt.Errorf("open token file: %w", err)
+	}
+	defer tokenFile.Close()
+
+	if err = writeTokenToDisk(s.token, tokenFile); err != nil {
+		return fmt.Errorf("write to token file: %w", err)
 	}
 
 	return nil
@@ -202,7 +214,7 @@ func loadTokenFromDisk(file *os.File) (*oauth2.Token, error) {
 }
 
 func (s *Spotify) NonInteractiveAuth(ctx context.Context) error {
-	tokenFile, err := os.OpenFile("token.json", os.O_CREATE|os.O_RDWR, 0o600)
+	tokenFile, err := os.OpenFile(tokenFilename, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return fmt.Errorf("load file: %w", err)
 	}
@@ -282,7 +294,7 @@ func (s *Spotify) completeAuth(w http.ResponseWriter, r *http.Request) {
 		r.Header,
 	)
 
-	tokenFile, err := os.OpenFile("token.json", os.O_CREATE|os.O_RDWR, 0o600)
+	tokenFile, err := os.OpenFile(tokenFilename, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		http.Error(w, "Couldn't read token file", http.StatusInternalServerError)
 		log.Printf("Failed to load file: %v\n", err)
