@@ -5,7 +5,7 @@ import "fmt"
 const goCacheName = "go-%s-122"
 
 var (
-	gooses   = []string{"linux", "darwin"}
+	gooses   = []string{"linux", "darwin", "openbsd"}
 	goarches = []string{"amd64", "arm64"}
 )
 
