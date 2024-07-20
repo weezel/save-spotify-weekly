@@ -78,7 +78,7 @@ func (s *Spotify) GetClient() *spotify.Client {
 	return s.client
 }
 
-func (s *Spotify) refreshAccessToken(ctx context.Context) error {
+func (s *Spotify) refreshTokens(ctx context.Context) error {
 	newToken, err := s.auth.RefreshToken(ctx, s.token)
 	if err != nil {
 		return fmt.Errorf("refresh token: %w", err)
@@ -183,7 +183,7 @@ func (s *Spotify) SaveCurrentWeeksPlaylist(
 		return fmt.Errorf("add tracks: %w", err)
 	}
 
-	fmt.Printf("Added tracks into playlist %q (ID=%s) with snapshot ID %s\n", pl.Name, pl.ID.String(), plSnapshotID)
+	log.Printf("Added tracks into playlist %q (ID=%s) with snapshot ID %s\n", pl.Name, pl.ID.String(), plSnapshotID)
 
 	return nil
 }
@@ -231,8 +231,8 @@ func (s *Spotify) NonInteractiveAuth(ctx context.Context) error {
 	}
 
 	s.token = token
-	if err = s.refreshAccessToken(ctx); err != nil {
-		return fmt.Errorf("refresh access token: %w", err)
+	if err = s.refreshTokens(ctx); err != nil {
+		return fmt.Errorf("refresh tokens: %w", err)
 	}
 
 	s.client = spotify.New(s.auth.Client(ctx, s.token))
